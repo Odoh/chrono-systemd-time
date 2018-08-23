@@ -1,0 +1,9 @@
+[package]
+name = "chrono-systemd-time"
+version = "0.1.0"
+authors = ["Josh Resch <joshresch.cpp@gmail.com>"]
+
+[dependencies]
+chrono = "0.4"
+maplit = "1.0"
+lazy_static = "1.1"
