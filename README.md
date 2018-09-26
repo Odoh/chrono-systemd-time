@@ -95,7 +95,7 @@ A time span is made up of a combination of time units, with the following time u
 * `"months"`, `"month"`, `"M"` (defined as 30.44 days)
 * `"years"`, `"year"`, `"y"` (defined as 365.25 days)
 
-All components of a time span are added to together.
+All components of a time span are added together.
 
 Examples of valid time spans:
 ```rust,ignore
