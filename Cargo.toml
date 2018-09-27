@@ -3,6 +3,21 @@ name = "chrono-systemd-time"
 version = "0.1.0"
 authors = ["Josh Resch <joshresch.cpp@gmail.com>"]
 
+description = "Library which parses systemd.time style timestamps into chrono types"
+homepage = "https://github.com/odoh/chrono-systemd-time"
+documentation = "https://docs.rs/chrono-systemd-time"
+repository = "https://github.com/odoh/chrono-systemd-time"
+keywords = ["chrono", "date", "time", "systemd"]
+categories = ["date-and-time"]
+readme = "README.md"
+license = "MIT/Apache-2.0"
+
+[badges]
+travis-ci = { repository = "odoh/chrono-systemd-time" }
+
+[lib]
+name = "chrono_systemd_time"
+
 [dependencies]
 chrono = "0.4"
 maplit = "1.0"

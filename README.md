@@ -1,5 +1,16 @@
 # chrono systemd.time
 
+[![Chrono on Travis CI][travis-image]][travis]
+[![Chrono on crates.io][cratesio-image]][cratesio]
+[![Chrono on docs.rs][docsrs-image]][docsrs]
+
+[travis-image]: https://travis-ci.com/Odoh/chrono-systemd-time.svg?branch=master
+[travis]: https://travis-ci.com/Odoh/chrono-systemd-time
+[cratesio-image]: https://img.shields.io/crates/v/chrono-systemd-time.svg
+[cratesio]: https://crates.io/crates/chrono-systemd-time
+[docsrs-image]: https://docs.rs/chrono-systemd-time/badge.svg
+[docsrs]: https://docs.rs/chrono-systemd-time
+
 [chrono-systemd-time] is a library which parses timestamps following the [systemd.time] specifications into [chrono] types.
 
 [chrono-systemd-time]: https://docs.rs/chrono-systemd-time/
