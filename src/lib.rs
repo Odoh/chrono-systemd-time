@@ -1,19 +1,7 @@
-//! # chrono systemd.time
+//! A library which parses timestamps following the [systemd.time] specifications into [chrono] types.
 //!
-//! [chrono-systemd-time] is a library which parses timestamps following the [systemd.time] specifications into [chrono] types.
-//!
-//! [chrono-systemd-time]: https://docs.rs/chrono-systemd-time/
 //! [systemd.time]: https://www.freedesktop.org/software/systemd/man/systemd.time.html
 //! [chrono]: https://docs.rs/chrono/
-//!
-//! ## Usage
-//!
-//! Put this in your `Cargo.toml`:
-//!
-//! ```toml
-//! [dependencies]
-//! chrono-systemd-time = "0.1"
-//! ```
 //!
 //! ## Timestamp Format
 //!
@@ -311,90 +299,67 @@ where
 /// * `ts` - a str of a time with whitespace intact.
 /// * `tz` - the time zone to use.
 fn parse_time<Tz: TimeZone>(ts: &str, tz: &Tz) -> Result<DateTime<Tz>, InvalidTimestamp> {
-    if ts == "now" {
-        let now = Utc::now().with_timezone(tz);
-        return Ok(now);
-    }
+    let dt = match ts {
+        "now" => Utc::now().with_timezone(tz),
+        "epoch" => tz.timestamp_opt(0, 0).unwrap(),
+        "today" => today_time(tz, None),
+        "yesterday" => today_time(tz, None) - Duration::days(1),
+        "tomorrow" => today_time(tz, None) + Duration::days(1),
+        ts => match ts.find('.') {
+            // an optional '.' separates the seconds and microseconds components
+            Some(p) => {
+                let ts_t = &ts[..p];
+                let dt = tz
+                    .datetime_from_str(ts_t, "%y-%m-%d %H:%M:%S")
+                    .or_else(|_| tz.datetime_from_str(ts_t, "%Y-%m-%d %H:%M:%S"))
+                    .or_else(|_| {
+                        NaiveTime::parse_from_str(ts_t, "%H:%M:%S")
+                            .map(|nt| today_time(tz, Some(nt)))
+                    })
+                    .map_err(|_| {
+                        InvalidTimestamp::Format(format!(
+                            "Cannot parse `{ts_t}` before '.' into a time"
+                        ))
+                    })?;
 
-    if ts == "epoch" {
-        let epoch = tz.timestamp_opt(0, 0).unwrap();
-        return Ok(epoch);
-    }
+                let ts_u = &ts[(p + 1)..];
+                let usecs = ts_u.parse::<i64>().map_err(|e| {
+                    InvalidTimestamp::Number(format!(
+                        "Cannot parse `{ts_u}` after '.' into a number: {e}"
+                    ))
+                })?;
 
-    if ts == "today" {
-        let today = today_time(tz, None);
-        return Ok(today);
-    }
-    if ts == "yesterday" {
-        let today = today_time(tz, None);
-        return Ok(today - Duration::days(1));
-    }
-    if ts == "tomorrow" {
-        let today = today_time(tz, None);
-        return Ok(today + Duration::days(1));
-    }
-
-    // an optional '.' separates the seconds and microseconds components
-    if let Some(p) = ts.find('.') {
-        let ts_t = &ts[..p];
-        let dt = if let Ok(dt) = tz.datetime_from_str(ts_t, "%y-%m-%d %H:%M:%S") {
-            dt
-        } else if let Ok(dt) = tz.datetime_from_str(ts_t, "%Y-%m-%d %H:%M:%S") {
-            dt
-        } else if let Ok(nt) = NaiveTime::parse_from_str(ts_t, "%H:%M:%S") {
-            today_time(tz, Some(nt))
-        } else {
-            let err_msg = format!("Cannot parse `{ts_t}` before '.' into a time");
-            return Err(InvalidTimestamp::Format(err_msg));
-        };
-
-        let ts_u = &ts[(p + 1)..];
-        let usecs = match ts_u.parse::<i64>() {
-            Ok(v) => v,
-            Err(e) => {
-                let err_msg = format!("Cannot parse `{}` after '.' into a number: {}", ts_u, e);
-                return Err(InvalidTimestamp::Number(err_msg));
+                dt + Duration::microseconds(usecs)
             }
-        };
-
-        return Ok(dt + Duration::microseconds(usecs));
-    }
-
-    if let Ok(dt) = tz.datetime_from_str(ts, "%y-%m-%d %H:%M:%S") {
-        return Ok(dt);
-    }
-    if let Ok(dt) = tz.datetime_from_str(ts, "%Y-%m-%d %H:%M:%S") {
-        return Ok(dt);
-    }
-    if let Ok(dt) = tz.datetime_from_str(ts, "%y-%m-%d %H:%M") {
-        return Ok(dt);
-    }
-    if let Ok(dt) = tz.datetime_from_str(ts, "%Y-%m-%d %H:%M") {
-        return Ok(dt);
-    }
-    if let Ok(nd) = NaiveDate::parse_from_str(ts, "%y-%m-%d") {
-        let dt = tz
-            .with_ymd_and_hms(nd.year(), nd.month(), nd.day(), 0, 0, 0)
-            .unwrap();
-        return Ok(dt);
-    }
-    if let Ok(nd) = NaiveDate::parse_from_str(ts, "%Y-%m-%d") {
-        let dt = tz
-            .with_ymd_and_hms(nd.year(), nd.month(), nd.day(), 0, 0, 0)
-            .unwrap();
-        return Ok(dt);
-    }
-    if let Ok(nt) = NaiveTime::parse_from_str(ts, "%H:%M:%S") {
-        let dt = today_time(tz, Some(nt));
-        return Ok(dt);
-    }
-    if let Ok(nt) = NaiveTime::parse_from_str(ts, "%H:%M") {
-        let dt = today_time(tz, Some(nt));
-        return Ok(dt);
-    }
-
-    let err_msg = format!("Cannot parse `{ts}` into a time");
-    Err(InvalidTimestamp::Format(err_msg))
+            None => tz
+                .datetime_from_str(ts, "%y-%m-%d %H:%M:%S")
+                .or_else(|_| tz.datetime_from_str(ts, "%Y-%m-%d %H:%M:%S"))
+                .or_else(|_| tz.datetime_from_str(ts, "%y-%m-%d %H:%M"))
+                .or_else(|_| tz.datetime_from_str(ts, "%Y-%m-%d %H:%M"))
+                .or_else(|_| {
+                    NaiveDate::parse_from_str(ts, "%y-%m-%d").map(|nd| {
+                        tz.with_ymd_and_hms(nd.year(), nd.month(), nd.day(), 0, 0, 0)
+                            .unwrap()
+                    })
+                })
+                .or_else(|_| {
+                    NaiveDate::parse_from_str(ts, "%Y-%m-%d").map(|nd| {
+                        tz.with_ymd_and_hms(nd.year(), nd.month(), nd.day(), 0, 0, 0)
+                            .unwrap()
+                    })
+                })
+                .or_else(|_| {
+                    NaiveTime::parse_from_str(ts, "%H:%M:%S").map(|nt| today_time(tz, Some(nt)))
+                })
+                .or_else(|_| {
+                    NaiveTime::parse_from_str(ts, "%H:%M").map(|nt| today_time(tz, Some(nt)))
+                })
+                .map_err(|_| {
+                    InvalidTimestamp::Format(format!("Cannot parse `{ts}` into a time"))
+                })?,
+        },
+    };
+    Ok(dt)
 }
 
 /// Parse and combine all time spans into a single duration.
@@ -418,33 +383,25 @@ fn parse_offset(mut ts_nw: &str) -> Result<Duration, InvalidTimestamp> {
         ts_nw = ts_tail;
 
         // parse the `number` and `multipler` strings into i64
-        let number = match digits.parse::<i64>() {
-            Ok(n) => n,
-            Err(e) => {
-                let err_msg = format!("Cannot parse `{}` into a number: {}", digits, e);
-                return Err(InvalidTimestamp::Number(err_msg));
-            }
-        };
-        let multiplier = if let Some(m) = USEC_MULTIPLIER.get::<str>(letters) {
-            *m
-        } else {
-            let err_msg = format!("Cannot parse `{}` into a multipler", letters);
-            return Err(InvalidTimestamp::TimeUnit(err_msg));
+        let number = digits.parse::<i64>().map_err(|e| {
+            InvalidTimestamp::Number(format!("Cannot parse `{}` into a number: {}", digits, e))
+        })?;
+        let Some(&multiplier) = USEC_MULTIPLIER.get::<str>(letters) else {
+            return Err(InvalidTimestamp::TimeUnit(format!(
+                "Cannot parse `{letters}` into a multipler"
+            )));
         };
 
-        // increment the total microsecond offset returning a failure on an overflow
-        total_usecs = if let Some(usecs) = number
+        let Some(usecs) = number
             .checked_mul(multiplier)
             .and_then(|usec| usec.checked_add(total_usecs))
-        {
-            usecs
-        } else {
-            let err_msg = format!(
-                "Offset microseconds overflowed: total_usecs `{}` number `{}` multiplier `{}`",
-                total_usecs, number, multiplier
-            );
-            return Err(InvalidTimestamp::Number(err_msg));
-        }
+        else {
+            return Err(InvalidTimestamp::Number(format!(
+                "Offset microseconds overflowed: total_usecs `{total_usecs}` number `{number}` multiplier `{multiplier}`"
+            )));
+        };
+        // increment the total microsecond offset returning a failure on an overflow
+        total_usecs = usecs;
     }
 }
 
@@ -467,9 +424,7 @@ fn partition_predicate<P>(ts: &str, predicate: P) -> (&str, &str)
 where
     P: Fn(char) -> bool,
 {
-    if let Some(p) = ts.find(|c: char| !predicate(c)) {
-        (&ts[..p], &ts[p..])
-    } else {
-        (ts, "")
-    }
+    ts.find(|c: char| !predicate(c))
+        .map(|p| ts.split_at(p))
+        .unwrap_or((ts, ""))
 }
