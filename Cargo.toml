@@ -1,8 +1,8 @@
 [package]
 name = "chrono-systemd-time"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Josh Resch <joshresch.cpp@gmail.com>"]
-
+edition = "2021"
 description = "Library which parses systemd.time style timestamps into chrono types"
 homepage = "https://github.com/odoh/chrono-systemd-time"
 documentation = "https://docs.rs/chrono-systemd-time"
@@ -21,4 +21,4 @@ name = "chrono_systemd_time"
 [dependencies]
 chrono = "0.4"
 maplit = "1.0"
-lazy_static = "1.1"
+once_cell = "1.18"

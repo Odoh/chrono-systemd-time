@@ -23,7 +23,7 @@ Put this in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chrono-systemd-time = "0.1"
+chrono-systemd-time = "0.2"
 ```
 
 ## Timestamp Format
