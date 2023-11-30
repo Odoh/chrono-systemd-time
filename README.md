@@ -1,30 +1,15 @@
 # chrono systemd.time
 
-[![Chrono on Travis CI][travis-image]][travis]
-[![Chrono on crates.io][cratesio-image]][cratesio]
-[![Chrono on docs.rs][docsrs-image]][docsrs]
+[![crates.io](https://img.shields.io/crates/v/chrono-systemd-time.svg)](https://crates.io/crates/chrono-systemd-time)
+[![docs.rs](https://docs.rs/chrono-systemd-time/badge.svg)](https://docs.rs/chrono-systemd-time/)
+[![Build & Test](https://github.com/Odoh/chrono-systemd-time/actions/workflows/test.yml/badge.svg)](https://github.com/Odoh/chrono-systemd-time/actions/workflows/test.yml)
+[![lint](https://github.com/Odoh/chrono-systemd-time/actions/workflows/lint.yml/badge.svg)](https://github.com/Odoh/chrono-systemd-time/actions/workflows/lint.yml)
 
-[travis-image]: https://travis-ci.com/Odoh/chrono-systemd-time.svg?branch=master
-[travis]: https://travis-ci.com/Odoh/chrono-systemd-time
-[cratesio-image]: https://img.shields.io/crates/v/chrono-systemd-time.svg
-[cratesio]: https://crates.io/crates/chrono-systemd-time
-[docsrs-image]: https://docs.rs/chrono-systemd-time/badge.svg
-[docsrs]: https://docs.rs/chrono-systemd-time
-
-[chrono-systemd-time] is a library which parses timestamps following the [systemd.time] specifications into [chrono] types.
+The library parses timestamps following the [systemd.time] specifications into [chrono] types.
 
 [chrono-systemd-time]: https://docs.rs/chrono-systemd-time/
 [systemd.time]: https://www.freedesktop.org/software/systemd/man/systemd.time.html
 [chrono]: https://docs.rs/chrono/
-
-## Usage
-
-Put this in your `Cargo.toml`:
-
-```toml
-[dependencies]
-chrono-systemd-time = "0.2"
-```
 
 ## Timestamp Format
 
@@ -93,7 +78,7 @@ Examples of valid times (assuming now is 2018-06-21 01:02:03):
                   "yesterday" == "2018-06-20T00:00:00"
                    "tomorrow" == "2018-06-22T00:00:00"
 ```
-       
+
 #### Time span
 A time span is made up of a combination of time units, with the following time units understood:
 * `"usec"`, `"us"`, `"µs"`
