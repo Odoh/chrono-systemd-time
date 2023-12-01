@@ -1,4 +1,4 @@
-//! A library which parses timestamps following the [systemd.time] specifications into [chrono] types.
+//! The library parses timestamps following the [systemd.time] specifications into [chrono] types.
 //!
 //! [systemd.time]: https://www.freedesktop.org/software/systemd/man/systemd.time.html
 //! [chrono]: https://docs.rs/chrono/
@@ -98,14 +98,18 @@
 #[cfg(test)]
 mod tests;
 
+mod error;
+mod local_datetime;
+
+pub use self::{error::Error, local_datetime::LocalDateTime};
+
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::str;
 
 use chrono::offset::Utc;
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone};
+use chrono::{Days, Duration};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use once_cell::sync::Lazy;
 
 /*
@@ -123,95 +127,77 @@ const USEC_PER_WEEK: i64 = 7 * USEC_PER_DAY;
 const USEC_PER_MONTH: i64 = 2_629_800 * USEC_PER_SEC;
 const USEC_PER_YEAR: i64 = 31_557_600 * USEC_PER_SEC;
 
+#[rustfmt::skip]
 static USEC_MULTIPLIER: Lazy<HashMap<&'static str, i64>> = Lazy::new(|| {
-    maplit::hashmap! {
-        "us" =>      USEC_PER_USEC,
-        "usec" =>    USEC_PER_USEC,
-        "µs" =>      USEC_PER_USEC,
+    HashMap::from_iter([
+        ("us", USEC_PER_USEC),
+        ("usec", USEC_PER_USEC),
+        ("µs", USEC_PER_USEC),
 
-        "ms" =>      USEC_PER_MSEC,
-        "msec" =>    USEC_PER_MSEC,
+        ("ms", USEC_PER_MSEC),
+        ("msec", USEC_PER_MSEC),
 
-        "s" =>       USEC_PER_SEC,
-        "sec" =>     USEC_PER_SEC,
-        "second" =>  USEC_PER_SEC,
-        "seconds" => USEC_PER_SEC,
+        ("s", USEC_PER_SEC),
+        ("sec", USEC_PER_SEC),
+        ("second", USEC_PER_SEC),
+        ("seconds", USEC_PER_SEC),
 
-        "m" =>       USEC_PER_MINUTE,
-        "min" =>     USEC_PER_MINUTE,
-        "minute" =>  USEC_PER_MINUTE,
-        "minutes" => USEC_PER_MINUTE,
+        ("m", USEC_PER_MINUTE),
+        ("min", USEC_PER_MINUTE),
+        ("minute", USEC_PER_MINUTE),
+        ("minutes", USEC_PER_MINUTE),
 
-        "h" =>       USEC_PER_HOUR,
-        "hour" =>    USEC_PER_HOUR,
-        "hours" =>   USEC_PER_HOUR,
-        "hr" =>      USEC_PER_HOUR,
+        ("h", USEC_PER_HOUR),
+        ("hour", USEC_PER_HOUR),
+        ("hours", USEC_PER_HOUR),
+        ("hr", USEC_PER_HOUR),
 
-        "d" =>       USEC_PER_DAY,
-        "day" =>     USEC_PER_DAY,
-        "days" =>    USEC_PER_DAY,
+        ("d", USEC_PER_DAY),
+        ("day", USEC_PER_DAY),
+        ("days", USEC_PER_DAY),
 
-        "M" =>       USEC_PER_MONTH,
-        "month" =>   USEC_PER_MONTH,
-        "months" =>  USEC_PER_MONTH,
+        ("M", USEC_PER_MONTH),
+        ("month", USEC_PER_MONTH),
+        ("months", USEC_PER_MONTH),
 
-        "w" =>       USEC_PER_WEEK,
-        "week" =>    USEC_PER_WEEK,
-        "weeks" =>   USEC_PER_WEEK,
+        ("w", USEC_PER_WEEK),
+        ("week", USEC_PER_WEEK),
+        ("weeks", USEC_PER_WEEK),
 
-        "y" =>       USEC_PER_YEAR,
-        "year" =>    USEC_PER_YEAR,
-        "years" =>   USEC_PER_YEAR,
-    }
+        ("y", USEC_PER_YEAR),
+        ("year", USEC_PER_YEAR),
+        ("years", USEC_PER_YEAR),
+    ])
 });
-
-/// Describes an error during the parsing of a timestamp.
-#[derive(Debug)]
-pub enum InvalidTimestamp {
-    /// The timestamp is incorrectly formatted.
-    Format(String),
-    /// The timestamp contains a component that cannot be parsed into a number, or the number overflowed.
-    Number(String),
-    /// The timestamp contains a component that cannot be parsed into a time unit.
-    TimeUnit(String),
-}
-
-impl Error for InvalidTimestamp {}
-
-impl fmt::Display for InvalidTimestamp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            InvalidTimestamp::Format(emsg) => write!(f, "invalid timestamp format: {emsg}"),
-            InvalidTimestamp::Number(emsg) => write!(f, "invalid timestamp number: {emsg}"),
-            InvalidTimestamp::TimeUnit(emsg) => write!(f, "invalid timestamp time unit: {emsg}"),
-        }
-    }
-}
 
 /// Parse a timestamp returning a `DateTime` with the specified timezone.
 ///
 /// # Examples
 /// ```rust
-///     # use chrono_systemd_time::parse_timestamp_tz;
-///     use chrono::{Duration, Local, Utc};
+/// # use chrono_systemd_time::parse_timestamp_tz;
+/// use chrono::{DateTime, Duration, Local, TimeZone, Utc};
 ///
-///     assert_eq!(parse_timestamp_tz("today + 2h", Utc).expect(""),
-///                parse_timestamp_tz("today", Utc).expect("") + Duration::hours(2));
-///     assert_eq!(parse_timestamp_tz("yesterday", Local).expect(""),
-///                parse_timestamp_tz("today - 1d", Local).expect(""));
-///     assert_eq!(parse_timestamp_tz("2018-06-21", Utc).expect(""),
-///                parse_timestamp_tz("18-06-21 1:00 - 1h", Utc).expect(""));
+/// fn parse_timestamp_tz_aux<Tz: TimeZone>(timestamp: &str, timezone: Tz) -> DateTime<Tz> {
+///     parse_timestamp_tz(timestamp, timezone)
+///         .unwrap()
+///         .single()
+///         .unwrap()
+/// }
+///
+/// assert_eq!(parse_timestamp_tz_aux("today + 2h", Utc),
+///             parse_timestamp_tz_aux("today", Utc) + Duration::hours(2));
+/// assert_eq!(parse_timestamp_tz_aux("yesterday", Local),
+///             parse_timestamp_tz_aux("today - 1d", Local));
+/// assert_eq!(parse_timestamp_tz_aux("2018-06-21", Utc),
+///             parse_timestamp_tz_aux("18-06-21 1:00 - 1h", Utc));
 /// ```
-pub fn parse_timestamp_tz<S, T, Tz>(
-    timestamp: S,
-    time_zone: T,
-) -> Result<DateTime<Tz>, InvalidTimestamp>
+pub fn parse_timestamp_tz<S, T, Tz>(timestamp: S, timezone: T) -> Result<LocalDateTime<Tz>, Error>
 where
     S: AsRef<str>,
     T: Borrow<Tz>,
     Tz: TimeZone,
 {
-    let tz = time_zone.borrow();
+    let tz = timezone.borrow();
     let ts = timestamp.as_ref();
     let ts_nw = ts
         .chars()
@@ -219,9 +205,7 @@ where
         .collect::<String>();
 
     if ts_nw.is_empty() {
-        return Err(InvalidTimestamp::Format(
-            "Timestamp cannot be empty".to_string(),
-        ));
+        return Err(Error::Format("Timestamp cannot be empty".to_owned()));
     }
 
     /*
@@ -240,23 +224,23 @@ where
     if ts.starts_with('+') {
         let now = Utc::now().with_timezone(tz);
         let offset = parse_offset(&ts_nw[1..])?;
-        return Ok(now + offset);
+        return Ok(LocalDateTime::Single(now + offset));
     }
     if ts.ends_with(" left") {
         let now = Utc::now().with_timezone(tz);
         let offset = parse_offset(&ts_nw[..(ts_nw.len() - 4)])?;
-        return Ok(now + offset);
+        return Ok(LocalDateTime::Single(now + offset));
     }
 
     if ts.starts_with('-') {
         let now = Utc::now().with_timezone(tz);
         let offset = parse_offset(&ts_nw[1..])?;
-        return Ok(now - offset);
+        return Ok(LocalDateTime::Single(now - offset));
     }
     if ts.ends_with(" ago") {
         let now = Utc::now().with_timezone(tz);
         let offset = parse_offset(&ts_nw[..(ts_nw.len() - 3)])?;
-        return Ok(now - offset);
+        return Ok(LocalDateTime::Single(now - offset));
     }
 
     // Special Case 2 - a prefix of '@':
@@ -265,15 +249,15 @@ where
     if ts.starts_with('@') {
         let epoch = tz.timestamp_opt(0, 0).unwrap();
         let offset = parse_offset(&ts_nw[1..])?;
-        return Ok(epoch + offset);
+        return Ok(LocalDateTime::Single(epoch + offset));
     }
 
     // General Case - the time is separated from the offset by either a '+' or '-'.
     // Note: need to find " +" and " -" here because strftime date formats may contain the '-' character,
     //       but with no leading whitespaces.
     match (ts.find(" +"), ts.find(" -")) {
-        (Some(_), Some(_)) => Err(InvalidTimestamp::Format(
-            "Timestamp cannot contain both a `+` and `-`".to_string(),
+        (Some(_), Some(_)) => Err(Error::Format(
+            "Timestamp cannot contain both a `+` and `-`".to_owned(),
         )),
         (Some(p), None) => {
             let p_nw = ts_nw.find('+').unwrap();
@@ -298,65 +282,57 @@ where
 ///
 /// * `ts` - a str of a time with whitespace intact.
 /// * `tz` - the time zone to use.
-fn parse_time<Tz: TimeZone>(ts: &str, tz: &Tz) -> Result<DateTime<Tz>, InvalidTimestamp> {
+fn parse_time<Tz: TimeZone>(ts: &str, tz: &Tz) -> Result<LocalDateTime<Tz>, Error> {
     let dt = match ts {
-        "now" => Utc::now().with_timezone(tz),
-        "epoch" => tz.timestamp_opt(0, 0).unwrap(),
-        "today" => today_time(tz, None),
-        "yesterday" => today_time(tz, None) - Duration::days(1),
-        "tomorrow" => today_time(tz, None) + Duration::days(1),
+        "now" => LocalDateTime::Single(Utc::now().with_timezone(tz)),
+        "epoch" => LocalDateTime::Single(tz.timestamp_opt(0, 0).unwrap()),
+        "today" => LocalDateTime::from_date(naive_today(tz), tz)?,
+        "yesterday" => LocalDateTime::from_date(naive_today(tz) - Days::new(1), tz)?,
+        "tomorrow" => LocalDateTime::from_date(naive_today(tz) + Days::new(1), tz)?,
         ts => match ts.find('.') {
             // an optional '.' separates the seconds and microseconds components
             Some(p) => {
                 let ts_t = &ts[..p];
-                let dt = tz
-                    .datetime_from_str(ts_t, "%y-%m-%d %H:%M:%S")
-                    .or_else(|_| tz.datetime_from_str(ts_t, "%Y-%m-%d %H:%M:%S"))
+                let ndt = NaiveDateTime::parse_from_str(ts_t, "%y-%m-%d %H:%M:%S")
+                    .or_else(|_| NaiveDateTime::parse_from_str(ts_t, "%Y-%m-%d %H:%M:%S"))
                     .or_else(|_| {
                         NaiveTime::parse_from_str(ts_t, "%H:%M:%S")
-                            .map(|nt| today_time(tz, Some(nt)))
+                            .map(|nt| naive_today(tz).and_time(nt))
                     })
                     .map_err(|_| {
-                        InvalidTimestamp::Format(format!(
-                            "Cannot parse `{ts_t}` before '.' into a time"
-                        ))
+                        Error::Format(format!("Cannot parse `{ts_t}` before '.' into a time"))
                     })?;
 
                 let ts_u = &ts[(p + 1)..];
-                let usecs = ts_u.parse::<i64>().map_err(|e| {
-                    InvalidTimestamp::Number(format!(
+                let usecs: i64 = ts_u.parse().map_err(|e| {
+                    Error::Number(format!(
                         "Cannot parse `{ts_u}` after '.' into a number: {e}"
                     ))
                 })?;
 
-                dt + Duration::microseconds(usecs)
+                let ndt = ndt + Duration::microseconds(usecs);
+                LocalDateTime::from_datetime(ndt, tz)?
             }
-            None => tz
-                .datetime_from_str(ts, "%y-%m-%d %H:%M:%S")
-                .or_else(|_| tz.datetime_from_str(ts, "%Y-%m-%d %H:%M:%S"))
-                .or_else(|_| tz.datetime_from_str(ts, "%y-%m-%d %H:%M"))
-                .or_else(|_| tz.datetime_from_str(ts, "%Y-%m-%d %H:%M"))
+            None => NaiveDateTime::parse_from_str(ts, "%y-%m-%d %H:%M:%S")
+                .or_else(|_| NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S"))
+                .or_else(|_| NaiveDateTime::parse_from_str(ts, "%y-%m-%d %H:%M"))
+                .or_else(|_| NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M"))
                 .or_else(|_| {
-                    NaiveDate::parse_from_str(ts, "%y-%m-%d").map(|nd| {
-                        tz.with_ymd_and_hms(nd.year(), nd.month(), nd.day(), 0, 0, 0)
-                            .unwrap()
-                    })
+                    NaiveDate::parse_from_str(ts, "%y-%m-%d")
+                        .map(|nd| nd.and_hms_opt(0, 0, 0).unwrap())
                 })
                 .or_else(|_| {
-                    NaiveDate::parse_from_str(ts, "%Y-%m-%d").map(|nd| {
-                        tz.with_ymd_and_hms(nd.year(), nd.month(), nd.day(), 0, 0, 0)
-                            .unwrap()
-                    })
+                    NaiveDate::parse_from_str(ts, "%Y-%m-%d")
+                        .map(|nd| nd.and_hms_opt(0, 0, 0).unwrap())
                 })
                 .or_else(|_| {
-                    NaiveTime::parse_from_str(ts, "%H:%M:%S").map(|nt| today_time(tz, Some(nt)))
+                    NaiveTime::parse_from_str(ts, "%H:%M:%S").map(|nt| naive_today(tz).and_time(nt))
                 })
                 .or_else(|_| {
-                    NaiveTime::parse_from_str(ts, "%H:%M").map(|nt| today_time(tz, Some(nt)))
+                    NaiveTime::parse_from_str(ts, "%H:%M").map(|nt| naive_today(tz).and_time(nt))
                 })
-                .map_err(|_| {
-                    InvalidTimestamp::Format(format!("Cannot parse `{ts}` into a time"))
-                })?,
+                .map_err(|_| Error::Format(format!("Cannot parse `{ts}` into a time")))
+                .and_then(|ndt| LocalDateTime::from_datetime(ndt, tz))?,
         },
     };
     Ok(dt)
@@ -365,7 +341,7 @@ fn parse_time<Tz: TimeZone>(ts: &str, tz: &Tz) -> Result<DateTime<Tz>, InvalidTi
 /// Parse and combine all time spans into a single duration.
 ///
 /// * `ts_nw` - a str of time spans with whitespace removed.
-fn parse_offset(mut ts_nw: &str) -> Result<Duration, InvalidTimestamp> {
+fn parse_offset(mut ts_nw: &str) -> Result<Duration, Error> {
     let mut total_usecs: i64 = 0;
     loop {
         if ts_nw.is_empty() {
@@ -379,24 +355,22 @@ fn parse_offset(mut ts_nw: &str) -> Result<Duration, InvalidTimestamp> {
         // look for digit characters to make up the `number`
         // followed by alphabetic characters to make up the `multiplier`
         let (digits, ts_tail) = partition_predicate(ts_nw, |c| c.is_ascii_digit());
-        let (letters, ts_tail) = partition_predicate(ts_tail, |c| c.is_alphabetic());
+        let (letters, ts_tail) = partition_predicate(ts_tail, char::is_alphabetic);
         ts_nw = ts_tail;
 
         // parse the `number` and `multipler` strings into i64
-        let number = digits.parse::<i64>().map_err(|e| {
-            InvalidTimestamp::Number(format!("Cannot parse `{}` into a number: {}", digits, e))
-        })?;
-        let Some(&multiplier) = USEC_MULTIPLIER.get::<str>(letters) else {
-            return Err(InvalidTimestamp::TimeUnit(format!(
-                "Cannot parse `{letters}` into a multipler"
-            )));
+        let number: i64 = digits
+            .parse()
+            .map_err(|e| Error::Number(format!("Cannot parse `{digits}` into a number: {e}")))?;
+        let Some(&multiplier) = USEC_MULTIPLIER.get(letters) else {
+            return Err(Error::TimeUnit(letters.to_owned()));
         };
 
         let Some(usecs) = number
             .checked_mul(multiplier)
             .and_then(|usec| usec.checked_add(total_usecs))
         else {
-            return Err(InvalidTimestamp::Number(format!(
+            return Err(Error::Number(format!(
                 "Offset microseconds overflowed: total_usecs `{total_usecs}` number `{number}` multiplier `{multiplier}`"
             )));
         };
@@ -405,15 +379,8 @@ fn parse_offset(mut ts_nw: &str) -> Result<Duration, InvalidTimestamp> {
     }
 }
 
-/// Return the **time** of today with the given timezone.
-///
-/// `t`: The accepted time. It will be `NaiveTime::default()` if it's None.
-fn today_time<Tz: TimeZone>(tz: &Tz, t: Option<NaiveTime>) -> DateTime<Tz> {
-    let t = Utc::now()
-        .with_timezone(tz)
-        .date_naive()
-        .and_time(t.unwrap_or_default());
-    tz.from_local_datetime(&t).unwrap()
+fn naive_today<Tz: TimeZone>(tz: &Tz) -> NaiveDate {
+    Utc::now().with_timezone(tz).date_naive()
 }
 
 /// Partition a str by a given predicate.
