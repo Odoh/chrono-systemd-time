@@ -1,6 +1,6 @@
 [package]
 name = "chrono-systemd-time"
-version = "0.3.0"
+version = "0.4.0"
 authors = [
   "Josh Resch <joshresch.cpp@gmail.com>",
   "Collide <three-dim-sky@foxmail.com>",
