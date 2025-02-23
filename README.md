@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/chrono-systemd-time.svg)](https://crates.io/crates/chrono-systemd-time)
 [![docs.rs](https://docs.rs/chrono-systemd-time/badge.svg)](https://docs.rs/chrono-systemd-time/)
 [![Build & Test](https://github.com/Odoh/chrono-systemd-time/actions/workflows/test.yml/badge.svg)](https://github.com/Odoh/chrono-systemd-time/actions/workflows/test.yml)
-[![lint](https://github.com/Odoh/chrono-systemd-time/actions/workflows/lint.yml/badge.svg)](https://github.com/Odoh/chrono-systemd-time/actions/workflows/lint.yml)
+[![check](https://github.com/Odoh/chrono-systemd-time/actions/workflows/check.yml/badge.svg)](https://github.com/Odoh/chrono-systemd-time/actions/workflows/check.yml)
 
 The library parses timestamps following the [systemd.time] specifications into [chrono] types.
 
