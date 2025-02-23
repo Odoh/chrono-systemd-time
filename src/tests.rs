@@ -1,9 +1,9 @@
 use chrono::offset::{Local, Utc};
 use chrono::{DateTime, Duration, NaiveTime, TimeZone};
 
+use super::Error;
 use super::naive_today;
 use super::parse_timestamp_tz;
-use super::Error;
 use super::{USEC_PER_MONTH, USEC_PER_YEAR};
 
 /*

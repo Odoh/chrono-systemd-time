@@ -106,11 +106,11 @@ pub use self::{error::Error, local_datetime::LocalDateTime};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::str;
+use std::sync::LazyLock;
 
 use chrono::offset::Utc;
 use chrono::{Days, Duration};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
-use once_cell::sync::Lazy;
 
 /*
  * Chrono stores its DateTimes and Durations in i64s, so use that here.
@@ -128,7 +128,7 @@ const USEC_PER_MONTH: i64 = 2_629_800 * USEC_PER_SEC;
 const USEC_PER_YEAR: i64 = 31_557_600 * USEC_PER_SEC;
 
 #[rustfmt::skip]
-static USEC_MULTIPLIER: Lazy<HashMap<&'static str, i64>> = Lazy::new(|| {
+static USEC_MULTIPLIER: LazyLock<HashMap<&'static str, i64>> = LazyLock::new(|| {
     HashMap::from_iter([
         ("us", USEC_PER_USEC),
         ("usec", USEC_PER_USEC),
